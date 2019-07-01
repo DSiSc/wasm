@@ -8,8 +8,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/go-interpreter/wagon/wasm"
-	ops "github.com/go-interpreter/wagon/wasm/operators"
+	"github.com/DSiSc/wasm/wasm"
+	ops "github.com/DSiSc/wasm/wasm/operators"
 )
 
 type Error struct {

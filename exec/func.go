@@ -9,7 +9,7 @@ import (
 	"math"
 	"reflect"
 
-	"github.com/go-interpreter/wagon/exec/internal/compile"
+	"github.com/DSiSc/wasm/exec/internal/compile"
 )
 
 type function interface {

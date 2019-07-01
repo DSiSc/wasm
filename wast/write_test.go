@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-interpreter/wagon/wasm"
-	"github.com/go-interpreter/wagon/wast"
+	"github.com/DSiSc/wasm/wasm"
+	"github.com/DSiSc/wasm/wast"
 )
 
 var testPaths = []string{
