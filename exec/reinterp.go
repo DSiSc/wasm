@@ -12,18 +12,18 @@ import (
 // TODO(vibhavp): Add optimisations to package compiles that
 // removes them from the original bytecode.
 
-func (vm *VM) i32ReinterpretF32() {
+func (vm *VMInterpreter) i32ReinterpretF32() {
 	vm.pushUint32(math.Float32bits(vm.popFloat32()))
 }
 
-func (vm *VM) i64ReinterpretF64() {
+func (vm *VMInterpreter) i64ReinterpretF64() {
 	vm.pushUint64(math.Float64bits(vm.popFloat64()))
 }
 
-func (vm *VM) f32ReinterpretI32() {
+func (vm *VMInterpreter) f32ReinterpretI32() {
 	vm.pushFloat32(math.Float32frombits(vm.popUint32()))
 }
 
-func (vm *VM) f64ReinterpretI64() {
+func (vm *VMInterpreter) f64ReinterpretI64() {
 	vm.pushFloat64(math.Float64frombits(vm.popUint64()))
 }

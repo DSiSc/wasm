@@ -269,7 +269,7 @@ func runTest(fileName string, testCases []testCase, t testing.TB, nativeBackend 
 		t.Fatalf("%s: %v", fileName, err)
 	}
 
-	vm, err := exec.NewVM(module, exec.EnableAOT(nativeBackend))
+	vm, err := exec.NewInterpreter(module, exec.EnableAOT(nativeBackend))
 	if err != nil {
 		t.Fatalf("%s: %v", fileName, err)
 	}
@@ -286,7 +286,7 @@ func runTest(fileName string, testCases []testCase, t testing.TB, nativeBackend 
 		}
 
 		if testCase.Trap != "" {
-			// don't benchmark tests that involve trapping the VM
+			// don't benchmark tests that involve trapping the VMInterpreter
 			fn := func() {
 				_, err := vm.ExecCode(int64(index), args...)
 				if err != nil {
@@ -421,7 +421,7 @@ func TestVMRestart(t *testing.T) {
 	testModules(t, nonSpecTestsDir, true)
 }
 
-func loadModuleFindFunc(t *testing.B, fileName, funcName string, nativeBackend bool) (*exec.VM, uint32) {
+func loadModuleFindFunc(t *testing.B, fileName, funcName string, nativeBackend bool) (*exec.VMInterpreter, uint32) {
 	file, err := os.Open(fileName)
 	if err != nil {
 		t.Fatal(err)
@@ -436,7 +436,7 @@ func loadModuleFindFunc(t *testing.B, fileName, funcName string, nativeBackend b
 		t.Fatalf("%s: %v", fileName, err)
 	}
 
-	vm, err := exec.NewVM(module, exec.EnableAOT(nativeBackend))
+	vm, err := exec.NewInterpreter(module, exec.EnableAOT(nativeBackend))
 	if err != nil {
 		t.Fatalf("%s: %v", fileName, err)
 	}

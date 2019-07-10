@@ -5,19 +5,32 @@
 package exec
 
 import (
+	"encoding/json"
+	"github.com/DSiSc/craft/types"
+	"github.com/DSiSc/evm-NG/common/math"
+	"github.com/DSiSc/monkey"
+	"github.com/DSiSc/repository"
+	"github.com/DSiSc/wasm/exec/memory"
+	"github.com/stretchr/testify/assert"
+	"io/ioutil"
+	"math/big"
+	"reflect"
 	"testing"
 )
 
 var (
-	smallMemoryVM      = &VM{memory: []byte{1, 2, 3}}
-	emptyMemoryVM      = &VM{memory: []byte{}}
+	smallMemoryVM = &VMInterpreter{Mem: &memory.VMmemory{
+		ByteMem: []byte{1, 2, 3}}}
+	emptyMemoryVM = &VMInterpreter{Mem: &memory.VMmemory{
+		ByteMem: []byte{}}}
 	smallMemoryProcess = &Process{vm: smallMemoryVM}
 	emptyMemoryProcess = &Process{vm: emptyMemoryVM}
 	tooBigABuffer      = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0}
 )
 
 func TestNormalWrite(t *testing.T) {
-	vm := &VM{memory: make([]byte, 300)}
+	vm := &VMInterpreter{Mem: &memory.VMmemory{
+		ByteMem: make([]byte, 300)}}
 	proc := &Process{vm: vm}
 	n, err := proc.WriteAt(tooBigABuffer, 0)
 	if err != nil {
@@ -33,7 +46,7 @@ func TestWriteBoundary(t *testing.T) {
 	if err == nil {
 		t.Fatal("Should have reported an error and didn't")
 	}
-	if n != len(smallMemoryVM.memory) {
+	if n != len(smallMemoryVM.Mem.ByteMem) {
 		t.Fatalf("Number of written bytes was %d, should have been 0", n)
 	}
 }
@@ -44,7 +57,7 @@ func TestReadBoundary(t *testing.T) {
 	if err == nil {
 		t.Fatal("Should have reported an error and didn't")
 	}
-	if n != len(smallMemoryVM.memory) {
+	if n != len(smallMemoryVM.Mem.ByteMem) {
 		t.Fatalf("Number of written bytes was %d, should have been 0", n)
 	}
 }
@@ -95,7 +108,8 @@ func TestWriteEmpty(t *testing.T) {
 }
 
 func TestWriteOffset(t *testing.T) {
-	vm := &VM{memory: make([]byte, 300)}
+	vm := &VMInterpreter{Mem: &memory.VMmemory{
+		ByteMem: make([]byte, 300)}}
 	proc := &Process{vm: vm}
 
 	n, err := proc.WriteAt(tooBigABuffer, 2)
@@ -106,7 +120,78 @@ func TestWriteOffset(t *testing.T) {
 		t.Fatalf("Number of written bytes was %d, should have been %d", n, len(tooBigABuffer))
 	}
 
-	if vm.memory[0] != 0 || vm.memory[1] != 0 || vm.memory[2] != tooBigABuffer[0] {
+	if vm.Mem.ByteMem[0] != 0 || vm.Mem.ByteMem[1] != 0 || vm.Mem.ByteMem[2] != tooBigABuffer[0] {
 		t.Fatal("Writing at offset didn't work")
 	}
+}
+
+func TestNewVM(t *testing.T) {
+	context := &WasmChainContext{}
+	state := &repository.Repository{}
+	vm := NewVM(context, state)
+	assert.NotNil(t, vm)
+}
+
+func TestVM_Create(t *testing.T) {
+	context := &WasmChainContext{}
+	state := &repository.Repository{}
+	vm := NewVM(context, state)
+	assert.NotNil(t, vm)
+
+	defer monkey.UnpatchAll()
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "GetNonce", func(self *repository.Repository, address types.Address) uint64 {
+		return 0
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "SetNonce", func(self *repository.Repository, address types.Address, nonce uint64) {
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "GetBalance", func(self *repository.Repository, address types.Address) *big.Int {
+		return big.NewInt(100)
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "GetCodeHash", func(self *repository.Repository, address types.Address) types.Hash {
+		return types.Hash{}
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "CreateAccount", func(self *repository.Repository, address types.Address) {
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "SetCode", func(self *repository.Repository, address types.Address, code []byte) {
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "SubBalance", func(self *repository.Repository, address types.Address, value *big.Int) {
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "AddBalance", func(self *repository.Repository, address types.Address, value *big.Int) {
+	})
+	caller := types.Address{}
+	code, _ := ioutil.ReadFile("testdata/add-ex.wasm")
+	gas := uint64(math.MaxUint64)
+	_, caddr, leftOverGas, err := vm.Create(caller, code, uint64(gas), big.NewInt(0))
+	assert.Nil(t, err)
+	assert.Equal(t, gas, leftOverGas)
+	assert.Equal(t, types.Address{0xbd, 0x77, 0x4, 0x16, 0xa3, 0x34, 0x5f, 0x91, 0xe4, 0xb3, 0x45, 0x76, 0xcb, 0x80, 0x4a, 0x57, 0x6f, 0xa4, 0x8e, 0xb1}, caddr)
+}
+
+func TestVM_Call(t *testing.T) {
+	context := &WasmChainContext{}
+	state := &repository.Repository{}
+	vm := NewVM(context, state)
+	assert.NotNil(t, vm)
+	caller := types.Address{}
+	contractAddr := types.Address{0xbd, 0x77, 0x4, 0x16, 0xa3, 0x34, 0x5f, 0x91, 0xe4, 0xb3, 0x45, 0x76, 0xcb, 0x80, 0x4a, 0x57, 0x6f, 0xa4, 0x8e, 0xb1}
+	code, _ := ioutil.ReadFile("testdata/invoke.wasm")
+
+	defer monkey.UnpatchAll()
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "GetCode", func(self *repository.Repository, address types.Address) []byte {
+		return code
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "SubBalance", func(self *repository.Repository, address types.Address, value *big.Int) {
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "AddBalance", func(self *repository.Repository, address types.Address, value *big.Int) {
+	})
+	monkey.PatchInstanceMethod(reflect.TypeOf(vm.StateDB), "GetBalance", func(self *repository.Repository, address types.Address) *big.Int {
+		return big.NewInt(100)
+	})
+
+	gas := uint64(math.MaxUint64)
+	input, _ := json.Marshal([]string{"method1", "argv1"})
+	ret, leftOverGas, err := vm.Call(caller, contractAddr, input, gas, big.NewInt(0))
+	assert.Nil(t, err)
+	assert.Equal(t, gas, leftOverGas)
+	assert.Equal(t, "method1", string(ret))
 }

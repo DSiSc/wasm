@@ -13,7 +13,7 @@ import (
 )
 
 type function interface {
-	call(vm *VM, index int64)
+	call(vm *VMInterpreter, index int64)
 }
 
 type compiledFunction struct {
@@ -40,9 +40,9 @@ type goFunction struct {
 	typ reflect.Type
 }
 
-func (fn goFunction) call(vm *VM, index int64) {
+func (fn goFunction) call(vm *VMInterpreter, index int64) {
 	// numIn = # of call inputs + vm, as the function expects
-	// an additional *VM argument
+	// an additional *VMInterpreter argument
 	numIn := fn.typ.NumIn()
 	args := make([]reflect.Value, numIn)
 	proc := NewProcess(vm)
@@ -89,7 +89,7 @@ func (fn goFunction) call(vm *VM, index int64) {
 	}
 }
 
-func (compiled compiledFunction) call(vm *VM, index int64) {
+func (compiled compiledFunction) call(vm *VMInterpreter, index int64) {
 	// Make space on the stack for all intermediate values and
 	// a possible return value.
 	newStack := make([]uint64, 0, compiled.maxDepth+1)

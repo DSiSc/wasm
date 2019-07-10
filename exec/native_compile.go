@@ -42,7 +42,7 @@ func (c *nativeCompiler) Close() error {
 }
 
 // pageAllocator is responsible for the efficient allocation of
-// executable, aligned regions of executable memory.
+// executable, aligned regions of executable Mem.
 type pageAllocator interface {
 	AllocateExec(asm []byte) (compile.NativeCodeUnit, error)
 	Close() error
@@ -85,7 +85,7 @@ func nativeBackend() (bool, *nativeCompiler) {
 	return false, nil
 }
 
-func (vm *VM) tryNativeCompile() error {
+func (vm *VMInterpreter) tryNativeCompile() error {
 	if vm.nativeBackend == nil {
 		return nil
 	}
@@ -154,9 +154,9 @@ func (vm *VM) tryNativeCompile() error {
 // information on the stack:
 // [fp:fp+pointerSize]: sliceHeader for the stack.
 // [fp+pointerSize:fp+pointerSize*2]: sliceHeader for locals variables.
-func (vm *VM) nativeCodeInvocation(asmIndex uint32) {
+func (vm *VMInterpreter) nativeCodeInvocation(asmIndex uint32) {
 	block := vm.ctx.asm[asmIndex]
-	finishSignal := block.nativeUnit.Invoke(&vm.ctx.stack, &vm.ctx.locals, &vm.globals, &vm.memory)
+	finishSignal := block.nativeUnit.Invoke(&vm.ctx.stack, &vm.ctx.locals, &vm.globals, &vm.Mem.ByteMem)
 
 	switch finishSignal.CompletionStatus() {
 	case compile.CompletionOK:

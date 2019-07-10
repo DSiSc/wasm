@@ -9,112 +9,112 @@ import (
 	"math"
 )
 
-// ErrOutOfBoundsMemoryAccess is the error value used while trapping the VM
-// when it detects an out of bounds access to the linear memory.
+// ErrOutOfBoundsMemoryAccess is the error value used while trapping the VMInterpreter
+// when it detects an out of bounds access to the linear Mem.
 var ErrOutOfBoundsMemoryAccess = errors.New("exec: out of bounds memory access")
 
-func (vm *VM) fetchBaseAddr() int {
+func (vm *VMInterpreter) fetchBaseAddr() int {
 	return int(vm.fetchUint32() + uint32(vm.popInt32()))
 }
 
 // inBounds returns true when the next vm.fetchBaseAddr() + offset
-// indices are in bounds accesses to the linear memory.
-func (vm *VM) inBounds(offset int) bool {
+// indices are in bounds accesses to the linear Mem.
+func (vm *VMInterpreter) inBounds(offset int) bool {
 	addr := endianess.Uint32(vm.ctx.code[vm.ctx.pc:]) + uint32(vm.ctx.stack[len(vm.ctx.stack)-1])
-	return int(addr)+offset < len(vm.memory)
+	return int(addr)+offset < len(vm.Mem.ByteMem)
 }
 
-// curMem returns a slice to the memory segment pointed to by
+// curMem returns a slice to the Mem segment pointed to by
 // the current base address on the bytecode stream.
-func (vm *VM) curMem() []byte {
-	return vm.memory[vm.fetchBaseAddr():]
+func (vm *VMInterpreter) curMem() []byte {
+	return vm.Mem.ByteMem[vm.fetchBaseAddr():]
 }
 
-func (vm *VM) i32Load() {
+func (vm *VMInterpreter) i32Load() {
 	if !vm.inBounds(3) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushUint32(endianess.Uint32(vm.curMem()))
 }
 
-func (vm *VM) i32Load8s() {
+func (vm *VMInterpreter) i32Load8s() {
 	if !vm.inBounds(0) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
-	vm.pushInt32(int32(int8(vm.memory[vm.fetchBaseAddr()])))
+	vm.pushInt32(int32(int8(vm.Mem.ByteMem[vm.fetchBaseAddr()])))
 }
 
-func (vm *VM) i32Load8u() {
+func (vm *VMInterpreter) i32Load8u() {
 	if !vm.inBounds(0) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
-	vm.pushUint32(uint32(uint8(vm.memory[vm.fetchBaseAddr()])))
+	vm.pushUint32(uint32(uint8(vm.Mem.ByteMem[vm.fetchBaseAddr()])))
 }
 
-func (vm *VM) i32Load16s() {
+func (vm *VMInterpreter) i32Load16s() {
 	if !vm.inBounds(1) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushInt32(int32(int16(endianess.Uint16(vm.curMem()))))
 }
 
-func (vm *VM) i32Load16u() {
+func (vm *VMInterpreter) i32Load16u() {
 	if !vm.inBounds(1) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushUint32(uint32(endianess.Uint16(vm.curMem())))
 }
 
-func (vm *VM) i64Load() {
+func (vm *VMInterpreter) i64Load() {
 	if !vm.inBounds(7) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushUint64(endianess.Uint64(vm.curMem()))
 }
 
-func (vm *VM) i64Load8s() {
+func (vm *VMInterpreter) i64Load8s() {
 	if !vm.inBounds(0) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
-	vm.pushInt64(int64(int8(vm.memory[vm.fetchBaseAddr()])))
+	vm.pushInt64(int64(int8(vm.Mem.ByteMem[vm.fetchBaseAddr()])))
 }
 
-func (vm *VM) i64Load8u() {
+func (vm *VMInterpreter) i64Load8u() {
 	if !vm.inBounds(0) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
-	vm.pushUint64(uint64(uint8(vm.memory[vm.fetchBaseAddr()])))
+	vm.pushUint64(uint64(uint8(vm.Mem.ByteMem[vm.fetchBaseAddr()])))
 }
 
-func (vm *VM) i64Load16s() {
+func (vm *VMInterpreter) i64Load16s() {
 	if !vm.inBounds(1) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushInt64(int64(int16(endianess.Uint16(vm.curMem()))))
 }
 
-func (vm *VM) i64Load16u() {
+func (vm *VMInterpreter) i64Load16u() {
 	if !vm.inBounds(1) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushUint64(uint64(endianess.Uint16(vm.curMem())))
 }
 
-func (vm *VM) i64Load32s() {
+func (vm *VMInterpreter) i64Load32s() {
 	if !vm.inBounds(3) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushInt64(int64(int32(endianess.Uint32(vm.curMem()))))
 }
 
-func (vm *VM) i64Load32u() {
+func (vm *VMInterpreter) i64Load32u() {
 	if !vm.inBounds(3) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushUint64(uint64(endianess.Uint32(vm.curMem())))
 }
 
-func (vm *VM) f32Store() {
+func (vm *VMInterpreter) f32Store() {
 	v := math.Float32bits(vm.popFloat32())
 	if !vm.inBounds(3) {
 		panic(ErrOutOfBoundsMemoryAccess)
@@ -122,14 +122,14 @@ func (vm *VM) f32Store() {
 	endianess.PutUint32(vm.curMem(), v)
 }
 
-func (vm *VM) f32Load() {
+func (vm *VMInterpreter) f32Load() {
 	if !vm.inBounds(3) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushFloat32(math.Float32frombits(endianess.Uint32(vm.curMem())))
 }
 
-func (vm *VM) f64Store() {
+func (vm *VMInterpreter) f64Store() {
 	v := math.Float64bits(vm.popFloat64())
 	if !vm.inBounds(7) {
 		panic(ErrOutOfBoundsMemoryAccess)
@@ -137,14 +137,14 @@ func (vm *VM) f64Store() {
 	endianess.PutUint64(vm.curMem(), v)
 }
 
-func (vm *VM) f64Load() {
+func (vm *VMInterpreter) f64Load() {
 	if !vm.inBounds(7) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
 	vm.pushFloat64(math.Float64frombits(endianess.Uint64(vm.curMem())))
 }
 
-func (vm *VM) i32Store() {
+func (vm *VMInterpreter) i32Store() {
 	v := vm.popUint32()
 	if !vm.inBounds(3) {
 		panic(ErrOutOfBoundsMemoryAccess)
@@ -152,15 +152,15 @@ func (vm *VM) i32Store() {
 	endianess.PutUint32(vm.curMem(), v)
 }
 
-func (vm *VM) i32Store8() {
+func (vm *VMInterpreter) i32Store8() {
 	v := byte(uint8(vm.popUint32()))
 	if !vm.inBounds(0) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
-	vm.memory[vm.fetchBaseAddr()] = v
+	vm.Mem.ByteMem[vm.fetchBaseAddr()] = v
 }
 
-func (vm *VM) i32Store16() {
+func (vm *VMInterpreter) i32Store16() {
 	v := uint16(vm.popUint32())
 	if !vm.inBounds(1) {
 		panic(ErrOutOfBoundsMemoryAccess)
@@ -168,7 +168,7 @@ func (vm *VM) i32Store16() {
 	endianess.PutUint16(vm.curMem(), v)
 }
 
-func (vm *VM) i64Store() {
+func (vm *VMInterpreter) i64Store() {
 	v := vm.popUint64()
 	if !vm.inBounds(7) {
 		panic(ErrOutOfBoundsMemoryAccess)
@@ -176,15 +176,15 @@ func (vm *VM) i64Store() {
 	endianess.PutUint64(vm.curMem(), v)
 }
 
-func (vm *VM) i64Store8() {
+func (vm *VMInterpreter) i64Store8() {
 	v := byte(uint8(vm.popUint64()))
 	if !vm.inBounds(0) {
 		panic(ErrOutOfBoundsMemoryAccess)
 	}
-	vm.memory[vm.fetchBaseAddr()] = v
+	vm.Mem.ByteMem[vm.fetchBaseAddr()] = v
 }
 
-func (vm *VM) i64Store16() {
+func (vm *VMInterpreter) i64Store16() {
 	v := uint16(vm.popUint64())
 	if !vm.inBounds(1) {
 		panic(ErrOutOfBoundsMemoryAccess)
@@ -192,7 +192,7 @@ func (vm *VM) i64Store16() {
 	endianess.PutUint16(vm.curMem(), v)
 }
 
-func (vm *VM) i64Store32() {
+func (vm *VMInterpreter) i64Store32() {
 	v := uint32(vm.popUint64())
 	if !vm.inBounds(3) {
 		panic(ErrOutOfBoundsMemoryAccess)
@@ -200,15 +200,15 @@ func (vm *VM) i64Store32() {
 	endianess.PutUint32(vm.curMem(), v)
 }
 
-func (vm *VM) currentMemory() {
+func (vm *VMInterpreter) currentMemory() {
 	_ = vm.fetchInt8() // reserved (https://github.com/WebAssembly/design/blob/27ac254c854994103c24834a994be16f74f54186/BinaryEncoding.md#memory-related-operators-described-here)
-	vm.pushInt32(int32(len(vm.memory) / wasmPageSize))
+	vm.pushInt32(int32(len(vm.Mem.ByteMem) / wasmPageSize))
 }
 
-func (vm *VM) growMemory() {
+func (vm *VMInterpreter) growMemory() {
 	_ = vm.fetchInt8() // reserved (https://github.com/WebAssembly/design/blob/27ac254c854994103c24834a994be16f74f54186/BinaryEncoding.md#memory-related-operators-described-here)
-	curLen := len(vm.memory) / wasmPageSize
+	curLen := len(vm.Mem.ByteMem) / wasmPageSize
 	n := vm.popInt32()
-	vm.memory = append(vm.memory, make([]byte, n*wasmPageSize)...)
+	vm.Mem.ByteMem = append(vm.Mem.ByteMem, make([]byte, n*wasmPageSize)...)
 	vm.pushInt32(int32(curLen))
 }

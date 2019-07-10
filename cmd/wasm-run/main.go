@@ -58,9 +58,9 @@ func run(w io.Writer, fname string, verify bool) {
 		log.Fatalf("module has no export section")
 	}
 
-	vm, err := exec.NewVM(m)
+	vm, err := exec.NewInterpreter(m)
 	if err != nil {
-		log.Fatalf("could not create VM: %v", err)
+		log.Fatalf("could not create VMInterpreter: %v", err)
 	}
 
 	for name, e := range m.Export.Entries {

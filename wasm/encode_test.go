@@ -20,6 +20,9 @@ var skipModuleFilenames = map[string]bool{
 	// can be inserted in any order in the sequence, hence the encodings
 	// mismatch is valid.
 	"rust-basic.wasm": true,
+	"malloc.wasm":     true,
+	"state.wasm":      true,
+	"invoke.wasm":     true,
 }
 
 func TestEncode(t *testing.T) {

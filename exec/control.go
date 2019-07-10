@@ -6,12 +6,12 @@ package exec
 
 import "errors"
 
-// ErrUnreachable is the error value used while trapping the VM when
+// ErrUnreachable is the error value used while trapping the VMInterpreter when
 // an unreachable operator is reached during execution.
 var ErrUnreachable = errors.New("exec: reached unreachable")
 
-func (vm *VM) unreachable() {
+func (vm *VMInterpreter) unreachable() {
 	panic(ErrUnreachable)
 }
 
-func (vm *VM) nop() {}
+func (vm *VMInterpreter) nop() {}
