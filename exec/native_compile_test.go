@@ -11,9 +11,10 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/go-interpreter/wagon/disasm"
-	"github.com/go-interpreter/wagon/exec/internal/compile"
-	ops "github.com/go-interpreter/wagon/wasm/operators"
+	"github.com/DSiSc/wasm/disasm"
+	"github.com/DSiSc/wasm/exec/internal/compile"
+	"github.com/DSiSc/wasm/exec/memory"
+	ops "github.com/DSiSc/wasm/wasm/operators"
 )
 
 func fakeNativeCompiler(t *testing.T) *nativeCompiler {
@@ -73,7 +74,7 @@ func TestNativeAsmStructureSetup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	vm := &VM{
+	vm := &VMInterpreter{
 		funcs: []function{
 			compiledFunction{
 				code: wasm,
@@ -136,7 +137,8 @@ func TestBasicAMD64(t *testing.T) {
 		{Op: addInst},
 		{Op: addInst},
 	})
-	vm := &VM{
+	vm := &VMInterpreter{
+		Mem: &memory.VMmemory{},
 		funcs: []function{
 			compiledFunction{
 				returns:      true,

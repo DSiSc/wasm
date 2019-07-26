@@ -4,18 +4,18 @@
 
 package exec
 
-func (vm *VM) i32Const() {
+func (vm *VMInterpreter) i32Const() {
 	vm.pushUint32(vm.fetchUint32())
 }
 
-func (vm *VM) i64Const() {
+func (vm *VMInterpreter) i64Const() {
 	vm.pushUint64(vm.fetchUint64())
 }
 
-func (vm *VM) f32Const() {
+func (vm *VMInterpreter) f32Const() {
 	vm.pushFloat32(vm.fetchFloat32())
 }
 
-func (vm *VM) f64Const() {
+func (vm *VMInterpreter) f64Const() {
 	vm.pushFloat64(vm.fetchFloat64())
 }

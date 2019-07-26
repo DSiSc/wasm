@@ -5,10 +5,10 @@
 package exec
 
 import (
-	ops "github.com/go-interpreter/wagon/wasm/operators"
+	ops "github.com/DSiSc/wasm/wasm/operators"
 )
 
-func (vm *VM) newFuncTable() {
+func (vm *VMInterpreter) newFuncTable() {
 	vm.funcTable[ops.I32Clz] = vm.i32Clz
 	vm.funcTable[ops.I32Ctz] = vm.i32Ctz
 	vm.funcTable[ops.I32Popcnt] = vm.i32Popcnt

@@ -11,9 +11,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/go-interpreter/wagon/exec"
-	"github.com/go-interpreter/wagon/validate"
-	"github.com/go-interpreter/wagon/wasm"
+	"github.com/DSiSc/wasm/exec"
+	"github.com/DSiSc/wasm/validate"
+	"github.com/DSiSc/wasm/wasm"
 )
 
 func main() {
@@ -58,9 +58,9 @@ func run(w io.Writer, fname string, verify bool) {
 		log.Fatalf("module has no export section")
 	}
 
-	vm, err := exec.NewVM(m)
+	vm, err := exec.NewInterpreter(m)
 	if err != nil {
-		log.Fatalf("could not create VM: %v", err)
+		log.Fatalf("could not create VMInterpreter: %v", err)
 	}
 
 	for name, e := range m.Export.Entries {

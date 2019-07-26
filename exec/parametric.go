@@ -4,11 +4,11 @@
 
 package exec
 
-func (vm *VM) drop() {
+func (vm *VMInterpreter) drop() {
 	vm.ctx.stack = vm.ctx.stack[:len(vm.ctx.stack)-1]
 }
 
-func (vm *VM) selectOp() {
+func (vm *VMInterpreter) selectOp() {
 	c := vm.popUint32()
 	val2 := vm.popUint64()
 	val1 := vm.popUint64()

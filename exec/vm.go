@@ -12,22 +12,42 @@ import (
 	"io"
 	"math"
 
-	"github.com/go-interpreter/wagon/disasm"
-	"github.com/go-interpreter/wagon/exec/internal/compile"
-	"github.com/go-interpreter/wagon/wasm"
-	ops "github.com/go-interpreter/wagon/wasm/operators"
+	"bytes"
+	"encoding/json"
+	"github.com/DSiSc/craft/log"
+	"github.com/DSiSc/craft/types"
+	"github.com/DSiSc/crypto-suite/crypto"
+	"github.com/DSiSc/repository"
+	"github.com/DSiSc/wasm/disasm"
+	"github.com/DSiSc/wasm/exec/internal/compile"
+	"github.com/DSiSc/wasm/exec/memory"
+	"github.com/DSiSc/wasm/wasm"
+	ops "github.com/DSiSc/wasm/wasm/operators"
+	"math/big"
 )
 
 var (
-	// ErrMultipleLinearMemories is returned by (*VM).NewVM when the module
-	// has more then one entries in the linear memory space.
+	// ErrMultipleLinearMemories is returned by (*VMInterpreter).NewInterpreter when the module
+	// has more then one entries in the linear Mem space.
 	ErrMultipleLinearMemories = errors.New("exec: more than one linear memories in module")
-	// ErrInvalidArgumentCount is returned by (*VM).ExecCode when an invalid
+	// ErrInvalidArgumentCount is returned by (*VMInterpreter).ExecCode when an invalid
 	// number of arguments to the WebAssembly function are passed to it.
 	ErrInvalidArgumentCount = errors.New("exec: invalid number of arguments to function")
+
+	ErrOutOfGas                 = errors.New("out of gas")
+	ErrCodeSizeExceedLimit      = errors.New("code size exceed the contract limit")
+	ErrDepth                    = errors.New("max call depth exceeded")
+	ErrTraceLimitReached        = errors.New("the number of logs reached the specified limit")
+	ErrInsufficientBalance      = errors.New("insufficient balance for transfer")
+	ErrContractAddressCollision = errors.New("contract address collision")
+	ErrNoCompatibleInterpreter  = errors.New("no compatible interpreter")
 )
 
-// InvalidReturnTypeError is returned by (*VM).ExecCode when the module
+// emptyCodeHash is used by create to ensure deployment is disallowed to already
+// deployed contract addresses (relevant after the account abstraction).
+var emptyCodeHash = crypto.Keccak256Hash(nil)
+
+// InvalidReturnTypeError is returned by (*VMInterpreter).ExecCode when the module
 // specifies an invalid return type value for the executed function.
 type InvalidReturnTypeError int8
 
@@ -35,7 +55,7 @@ func (e InvalidReturnTypeError) Error() string {
 	return fmt.Sprintf("Function has invalid return value_type: %d", int8(e))
 }
 
-// InvalidFunctionIndexError is returned by (*VM).ExecCode when the function
+// InvalidFunctionIndexError is returned by (*VMInterpreter).ExecCode when the function
 // index provided is invalid.
 type InvalidFunctionIndexError int64
 
@@ -52,13 +72,140 @@ type context struct {
 	curFunc int64
 }
 
-// VM is the execution context for executing WebAssembly bytecode.
+//VM WebAssembly embedder.
 type VM struct {
+	ChainContext *WasmChainContext
+	StateDB      *repository.Repository
+}
+
+// NewVM creates a new VM instance.
+func NewVM(chainContext *WasmChainContext, state *repository.Repository) *VM {
+	return &VM{
+		ChainContext: chainContext,
+		StateDB:      state,
+	}
+}
+
+// Create creates a new contract using code as deployment code.
+func (self *VM) Create(caller types.Address, code []byte, gas uint64, value *big.Int) (ret []byte, contractAddr types.Address, leftOverGas uint64, err error) {
+	_, err = wasm.ReadModule(bytes.NewReader(code), NativeResolve)
+	if err != nil {
+		log.Error("failed to read the module from code, as: %v", err)
+		return nil, types.Address{}, gas, err
+	}
+	//generate contract address
+	nonce := self.StateDB.GetNonce(caller)
+	contractAddr = crypto.CreateAddress(caller, nonce)
+
+	//check balance
+	if !CanTransfer(self.StateDB, caller, value) {
+		return nil, types.Address{}, gas, ErrInsufficientBalance
+	}
+
+	//update caller nonce
+	self.StateDB.SetNonce(caller, nonce+1)
+
+	// Ensure there's no existing contract already at the designated address
+	contractHash := self.StateDB.GetCodeHash(contractAddr)
+	if self.StateDB.GetNonce(contractAddr) != 0 || (contractHash != (types.Hash{}) && contractHash != emptyCodeHash) {
+		return nil, types.Address{}, 0, ErrContractAddressCollision
+	}
+
+	// check whether the max code size has been exceeded
+	if len(code) > MaxCodeSize {
+		return nil, types.Address{}, 0, ErrCodeSizeExceedLimit
+	}
+
+	// Create a new account on the state
+	self.StateDB.CreateAccount(contractAddr)
+	self.StateDB.SetCode(contractAddr, code)
+	Transfer(self.StateDB, caller, contractAddr, value)
+	return nil, contractAddr, gas, nil
+}
+
+const entryPointMethod = "invoke"
+
+// Call executes the contract associated with the addr with the given input as
+// parameters. It also handles any necessary value transfer required and takes
+// the necessary steps to create accounts and reverses the state in case of an
+// execution error or failed value transfer.
+func (self *VM) Call(caller, addr types.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
+	// Fail if we're trying to transfer more than the available balance
+	if !CanTransfer(self.StateDB, caller, value) {
+		return nil, gas, ErrInsufficientBalance
+	}
+	Transfer(self.StateDB, caller, addr, value)
+
+	code := self.StateDB.GetCode(addr)
+	m, err := wasm.ReadModule(bytes.NewReader(code), NativeResolve)
+	if err != nil {
+		log.Error("failed to read the module from code, as: %v", err)
+		return nil, gas, err
+	}
+
+	interpreter, err := NewVMIntepreter(self, m)
+	if err != nil {
+		log.Error("failed to create wasm interpreter, as: %v", err)
+		return nil, gas, err
+	}
+
+	var fnIndex int64
+	if fnEntry, ok := m.Export.Entries[entryPointMethod]; ok {
+		fnIndex = int64(fnEntry.Index)
+	} else {
+		return nil, gas, errors.New("failed to find the contract entry method.")
+	}
+
+	args, err := extractParams(input)
+	if err != nil {
+		return nil, gas, fmt.Errorf("failed to extract input params, as:%v.", err)
+	}
+
+	argPs := make([]int, len(args))
+	for index, arg := range args {
+		argP, err := interpreter.GetMemory().SetPointerMemory(arg)
+		if err != nil {
+			return nil, gas, fmt.Errorf("failed to pass input params to contract, as:%v.", err)
+		}
+		argPs[index] = argP
+	}
+	argPPs, err := interpreter.GetMemory().SetPointerMemory(argPs)
+	if err != nil {
+		return nil, gas, fmt.Errorf("failed to pass input params to contract, as:%v.", err)
+	}
+
+	retP, err := interpreter.ExecCode(fnIndex, uint64(len(args)), uint64(argPPs))
+	if err != nil {
+		return nil, gas, fmt.Errorf("failed to execute contract, as:%v.", err)
+	}
+
+	ret, err = interpreter.GetMemory().GetMemory(uint64(retP.(uint32)))
+	if err != nil {
+		return nil, gas, fmt.Errorf("failed to parse contract retrun value, as:%v.", err)
+	}
+	return ret, gas, err
+}
+
+// extract call input params
+func extractParams(input []byte) ([]string, error) {
+	var params []string
+	err := json.Unmarshal(input, &params)
+	if err != nil {
+		return nil, err
+	}
+	return params, nil
+}
+
+// VMInterpreter is the execution context for executing WebAssembly bytecode.
+type VMInterpreter struct {
+	ChainContext *WasmChainContext
+	StateDB      *repository.Repository
+
 	ctx context
 
 	module  *wasm.Module
 	globals []uint64
-	memory  []byte
+	Mem     *memory.VMmemory
 	funcs   []function
 
 	funcTable [256]func()
@@ -66,7 +213,7 @@ type VM struct {
 	// RecoverPanic controls whether the `ExecCode` method
 	// recovers from a panic and returns it as an error
 	// instead.
-	// A panic can occur either when executing an invalid VM
+	// A panic can occur either when executing an invalid VMInterpreter
 	// or encountering an invalid instruction, e.g. `unreachable`.
 	RecoverPanic bool
 
@@ -84,7 +231,7 @@ type config struct {
 	EnableAOT bool
 }
 
-// VMOption describes a customization that can be applied to the VM.
+// VMOption describes a customization that can be applied to the VMInterpreter.
 type VMOption func(c *config)
 
 // EnableAOT enables ahead-of-time compilation of supported opcodes
@@ -96,22 +243,32 @@ func EnableAOT(v bool) VMOption {
 	}
 }
 
-// NewVM creates a new VM from a given module and options. If the module defines
+// NewVMIntepreter create interpreter instance running in specified vm env.
+func NewVMIntepreter(vm *VM, module *wasm.Module, opts ...VMOption) (*VMInterpreter, error) {
+	interpreter, err := NewInterpreter(module, opts...)
+	if err != nil {
+		return nil, err
+	}
+	interpreter.StateDB = vm.StateDB
+	interpreter.ChainContext = vm.ChainContext
+	return interpreter, nil
+}
+
+// NewInterpreter creates a new interpreter from a given module and options. If the module defines
 // a start function, it will be executed.
-func NewVM(module *wasm.Module, opts ...VMOption) (*VM, error) {
-	var vm VM
+func NewInterpreter(module *wasm.Module, opts ...VMOption) (*VMInterpreter, error) {
+	var vm VMInterpreter
 	var options config
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	if module.Memory != nil && len(module.Memory.Entries) != 0 {
-		if len(module.Memory.Entries) > 1 {
-			return nil, ErrMultipleLinearMemories
-		}
-		vm.memory = make([]byte, uint(module.Memory.Entries[0].Limits.Initial)*wasmPageSize)
-		copy(vm.memory, module.LinearMemoryIndexSpace[0])
+	// init module memory
+	vmMem, err := initVMMemory(module)
+	if err != nil {
+		return nil, err
 	}
+	vm.Mem = vmMem
 
 	vm.funcs = make([]function, len(module.FunctionIndexSpace))
 	vm.globals = make([]uint64, len(module.GlobalIndexSpace))
@@ -181,7 +338,66 @@ func NewVM(module *wasm.Module, opts ...VMOption) (*VM, error) {
 	return &vm, nil
 }
 
-func (vm *VM) resetGlobals() error {
+// init wasm runtime memory
+func initVMMemory(module *wasm.Module) (*memory.VMmemory, error) {
+
+	vmMem := &memory.VMmemory{}
+	if module.Memory != nil && len(module.Memory.Entries) != 0 {
+		if len(module.Memory.Entries) > 1 {
+			return nil, ErrMultipleLinearMemories
+		}
+		vmMem.ByteMem = make([]byte, uint(module.Memory.Entries[0].Limits.Initial)*wasmPageSize)
+		copy(vmMem.ByteMem, module.LinearMemoryIndexSpace[0])
+	}
+
+	//give a default memory even if no memory section exist in wasm file
+	if vmMem.ByteMem == nil {
+		vmMem.ByteMem = make([]byte, 1*wasmPageSize)
+	}
+
+	vmMem.MemPoints = make(map[uint64]*memory.TypeLength) //init the pointer map
+
+	//solve the Data section
+	//this section is for some const strings, just like heap
+	if module.Data != nil {
+		var tmpIdx int
+		for _, entry := range module.Data.Entries {
+			if entry.Index != 0 {
+				return nil, errors.New("invalid data index")
+			}
+			val, err := module.ExecInitExpr(entry.Offset)
+			if err != nil {
+				return nil, err
+			}
+			offset, ok := val.(int32)
+			tmpIdx += int(offset) + len(entry.Data)
+			if !ok {
+				return nil, errors.New("invalid data index")
+			}
+			// for the case of " (data (get_global 0) "init\00init success!\00add\00int"))"
+			if bytes.Contains(entry.Data, []byte{byte(0)}) {
+				splited := bytes.Split(entry.Data, []byte{byte(0)})
+				var tmpoffset = int(offset)
+				for _, tmp := range splited {
+					vmMem.MemPoints[uint64(tmpoffset)] = &memory.TypeLength{Ptype: memory.PString, Length: len(tmp) + 1}
+					tmpoffset += len(tmp) + 1
+				}
+			} else {
+				vmMem.MemPoints[uint64(offset)] = &memory.TypeLength{Ptype: memory.PString, Length: len(entry.Data)}
+			}
+		}
+		//
+		vmMem.AllocedMemIdex = tmpIdx
+		vmMem.PointedMemIndex = (len(vmMem.ByteMem) + tmpIdx) / 2
+	} else {
+		//default pointed memory
+		vmMem.AllocedMemIdex = -1
+		vmMem.PointedMemIndex = len(vmMem.ByteMem) / 2 //the second half memory is reserved for the pointed objects,string,array,structs
+	}
+	return vmMem, nil
+}
+
+func (vm *VMInterpreter) resetGlobals() error {
 	for i, global := range vm.module.GlobalIndexSpace {
 		val, err := vm.module.ExecInitExpr(global.Init)
 		if err != nil {
@@ -202,12 +418,12 @@ func (vm *VM) resetGlobals() error {
 	return nil
 }
 
-// Memory returns the linear memory space for the VM.
-func (vm *VM) Memory() []byte {
-	return vm.memory
+// ByteMem returns the linear Mem space for the VMInterpreter.
+func (vm *VMInterpreter) GetMemory() *memory.VMmemory {
+	return vm.Mem
 }
 
-func (vm *VM) pushBool(v bool) {
+func (vm *VMInterpreter) pushBool(v bool) {
 	if v {
 		vm.pushUint64(1)
 	} else {
@@ -215,71 +431,71 @@ func (vm *VM) pushBool(v bool) {
 	}
 }
 
-func (vm *VM) fetchBool() bool {
+func (vm *VMInterpreter) fetchBool() bool {
 	return vm.fetchInt8() != 0
 }
 
-func (vm *VM) fetchInt8() int8 {
+func (vm *VMInterpreter) fetchInt8() int8 {
 	i := int8(vm.ctx.code[vm.ctx.pc])
 	vm.ctx.pc++
 	return i
 }
 
-func (vm *VM) fetchUint32() uint32 {
+func (vm *VMInterpreter) fetchUint32() uint32 {
 	v := endianess.Uint32(vm.ctx.code[vm.ctx.pc:])
 	vm.ctx.pc += 4
 	return v
 }
 
-func (vm *VM) fetchInt32() int32 {
+func (vm *VMInterpreter) fetchInt32() int32 {
 	return int32(vm.fetchUint32())
 }
 
-func (vm *VM) fetchFloat32() float32 {
+func (vm *VMInterpreter) fetchFloat32() float32 {
 	return math.Float32frombits(vm.fetchUint32())
 }
 
-func (vm *VM) fetchUint64() uint64 {
+func (vm *VMInterpreter) fetchUint64() uint64 {
 	v := endianess.Uint64(vm.ctx.code[vm.ctx.pc:])
 	vm.ctx.pc += 8
 	return v
 }
 
-func (vm *VM) fetchInt64() int64 {
+func (vm *VMInterpreter) fetchInt64() int64 {
 	return int64(vm.fetchUint64())
 }
 
-func (vm *VM) fetchFloat64() float64 {
+func (vm *VMInterpreter) fetchFloat64() float64 {
 	return math.Float64frombits(vm.fetchUint64())
 }
 
-func (vm *VM) popUint64() uint64 {
+func (vm *VMInterpreter) popUint64() uint64 {
 	i := vm.ctx.stack[len(vm.ctx.stack)-1]
 	vm.ctx.stack = vm.ctx.stack[:len(vm.ctx.stack)-1]
 	return i
 }
 
-func (vm *VM) popInt64() int64 {
+func (vm *VMInterpreter) popInt64() int64 {
 	return int64(vm.popUint64())
 }
 
-func (vm *VM) popFloat64() float64 {
+func (vm *VMInterpreter) popFloat64() float64 {
 	return math.Float64frombits(vm.popUint64())
 }
 
-func (vm *VM) popUint32() uint32 {
+func (vm *VMInterpreter) popUint32() uint32 {
 	return uint32(vm.popUint64())
 }
 
-func (vm *VM) popInt32() int32 {
+func (vm *VMInterpreter) popInt32() int32 {
 	return int32(vm.popUint32())
 }
 
-func (vm *VM) popFloat32() float32 {
+func (vm *VMInterpreter) popFloat32() float32 {
 	return math.Float32frombits(vm.popUint32())
 }
 
-func (vm *VM) pushUint64(i uint64) {
+func (vm *VMInterpreter) pushUint64(i uint64) {
 	if debugStackDepth {
 		if len(vm.ctx.stack) >= cap(vm.ctx.stack) {
 			panic("stack exceeding max depth: " + fmt.Sprintf("len=%d,cap=%d", len(vm.ctx.stack), cap(vm.ctx.stack)))
@@ -288,30 +504,30 @@ func (vm *VM) pushUint64(i uint64) {
 	vm.ctx.stack = append(vm.ctx.stack, i)
 }
 
-func (vm *VM) pushInt64(i int64) {
+func (vm *VMInterpreter) pushInt64(i int64) {
 	vm.pushUint64(uint64(i))
 }
 
-func (vm *VM) pushFloat64(f float64) {
+func (vm *VMInterpreter) pushFloat64(f float64) {
 	vm.pushUint64(math.Float64bits(f))
 }
 
-func (vm *VM) pushUint32(i uint32) {
+func (vm *VMInterpreter) pushUint32(i uint32) {
 	vm.pushUint64(uint64(i))
 }
 
-func (vm *VM) pushInt32(i int32) {
+func (vm *VMInterpreter) pushInt32(i int32) {
 	vm.pushUint64(uint64(i))
 }
 
-func (vm *VM) pushFloat32(f float32) {
+func (vm *VMInterpreter) pushFloat32(f float32) {
 	vm.pushUint32(math.Float32bits(f))
 }
 
 // ExecCode calls the function with the given index and arguments.
 // fnIndex should be a valid index into the function index space of
-// the VM's module.
-func (vm *VM) ExecCode(fnIndex int64, args ...uint64) (rtrn interface{}, err error) {
+// the VMInterpreter's module.
+func (vm *VMInterpreter) ExecCode(fnIndex int64, args ...uint64) (rtrn interface{}, err error) {
 	// If used as a library, client code should set vm.RecoverPanic to true
 	// in order to have an error returned.
 	if vm.RecoverPanic {
@@ -374,7 +590,7 @@ func (vm *VM) ExecCode(fnIndex int64, args ...uint64) (rtrn interface{}, err err
 	return rtrn, nil
 }
 
-func (vm *VM) execCode(compiled compiledFunction) uint64 {
+func (vm *VMInterpreter) execCode(compiled compiledFunction) uint64 {
 outer:
 	for int(vm.ctx.pc) < len(vm.ctx.code) && !vm.abort {
 		op := vm.ctx.code[vm.ctx.pc]
@@ -458,15 +674,15 @@ outer:
 	return 0
 }
 
-// Restart readies the VM for another run.
-func (vm *VM) Restart() {
+// Restart readies the VMInterpreter for another run.
+func (vm *VMInterpreter) Restart() {
 	vm.resetGlobals()
 	vm.ctx.locals = make([]uint64, 0)
 	vm.abort = false
 }
 
-// Close frees any resources managed by the VM.
-func (vm *VM) Close() error {
+// Close frees any resources managed by the VMInterpreter.
+func (vm *VMInterpreter) Close() error {
 	vm.abort = true // prevents further use.
 	if vm.nativeBackend != nil {
 		if err := vm.nativeBackend.Close(); err != nil {
@@ -477,20 +693,20 @@ func (vm *VM) Close() error {
 }
 
 // Process is a proxy passed to host functions in order to access
-// things such as memory and control.
+// things such as Mem and control.
 type Process struct {
-	vm *VM
+	vm *VMInterpreter
 }
 
-// NewProcess creates a VM interface object for host functions
-func NewProcess(vm *VM) *Process {
+// NewProcess creates a VMInterpreter interface object for host functions
+func NewProcess(vm *VMInterpreter) *Process {
 	return &Process{vm: vm}
 }
 
 // ReadAt implements the ReaderAt interface: it copies into p
-// the content of memory at offset off.
+// the content of Mem at offset off.
 func (proc *Process) ReadAt(p []byte, off int64) (int, error) {
-	mem := proc.vm.Memory()
+	mem := proc.vm.GetMemory().ByteMem
 
 	var length int
 	if len(mem) < len(p)+int(off) {
@@ -510,9 +726,9 @@ func (proc *Process) ReadAt(p []byte, off int64) (int, error) {
 }
 
 // WriteAt implements the WriterAt interface: it writes the content of p
-// into the VM memory at offset off.
+// into the vmMem at offset off.
 func (proc *Process) WriteAt(p []byte, off int64) (int, error) {
-	mem := proc.vm.Memory()
+	mem := proc.vm.GetMemory().ByteMem
 
 	var length int
 	if len(mem) < len(p)+int(off) {
@@ -534,4 +750,9 @@ func (proc *Process) WriteAt(p []byte, off int64) (int, error) {
 // Terminate stops the execution of the current module.
 func (proc *Process) Terminate() {
 	proc.vm.abort = true
+}
+
+// GetVMInstance get the current vm instance
+func (proc *Process) GetVMInstance() *VMInterpreter {
+	return proc.vm
 }

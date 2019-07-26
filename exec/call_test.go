@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/go-interpreter/wagon/wasm"
+	"github.com/DSiSc/wasm/wasm"
 )
 
 func TestHostCall(t *testing.T) {
@@ -72,11 +72,11 @@ func TestHostCall(t *testing.T) {
 		Bodies: []wasm.FunctionBody{fb},
 	}
 
-	// Once called, NewVM will execute the module's main
+	// Once called, NewInterpreter will execute the module's main
 	// function.
-	vm, err := NewVM(m)
+	vm, err := NewInterpreter(m)
 	if err != nil {
-		t.Fatalf("Error creating VM: %v", vm)
+		t.Fatalf("Error creating VMInterpreter: %v", vm)
 	}
 
 	if len(vm.funcs) < 1 {
@@ -178,7 +178,7 @@ func TestHostSymbolCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not read module: %v", err)
 	}
-	vm, err := NewVM(m)
+	vm, err := NewInterpreter(m)
 	if err != nil {
 		t.Fatalf("Could not instantiate vm: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestGoFunctionCallChecksForFirstArgument(t *testing.T) {
 			}
 		}
 	}()
-	vm, err := NewVM(m)
+	vm, err := NewInterpreter(m)
 	if err != nil {
 		t.Fatalf("Could not instantiate vm: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestHostTerminate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Could not read module: %v", err)
 	}
-	vm, err := NewVM(m)
+	vm, err := NewInterpreter(m)
 	if err != nil {
 		t.Fatalf("Could not instantiate vm: %v", err)
 	}

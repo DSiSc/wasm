@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/go-interpreter/wagon/wasm/leb128"
+	"github.com/DSiSc/wasm/wasm/leb128"
 )
 
 // Import is an interface implemented by types that can be imported by a WebAssembly module.
@@ -26,7 +26,7 @@ type ImportEntry struct {
 
 	// If Kind is Function, Type is a FuncImport containing the type index of the function signature
 	// If Kind is Table, Type is a TableImport containing the type of the imported table
-	// If Kind is Memory, Type is a MemoryImport containing the type of the imported memory
+	// If Kind is ByteMem, Type is a MemoryImport containing the type of the imported memory
 	// If the Kind is Global, Type is a GlobalVarImport
 	Type Import
 }

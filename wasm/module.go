@@ -9,7 +9,8 @@ import (
 	"io"
 	"reflect"
 
-	"github.com/go-interpreter/wagon/wasm/internal/readpos"
+	"bytes"
+	"github.com/DSiSc/wasm/wasm/internal/readpos"
 )
 
 var ErrInvalidMagic = errors.New("wasm: Invalid magic number")
@@ -162,6 +163,17 @@ func ReadModule(r io.Reader, resolvePath ResolveFunc) (*Module, error) {
 
 	}
 
+	if nil != m.Start {
+		return nil, errors.New("start entry is not supported in smart contract")
+	}
+
 	logger.Printf("There are %d entries in the function index space.", len(m.FunctionIndexSpace))
 	return m, nil
+}
+
+// IsValidWasmCode check whether the code is valid wasm code
+func IsValidWasmCode(code []byte) bool {
+	r := bytes.NewReader(code)
+	magic, err := readU32(r)
+	return err == nil && Magic == magic
 }
