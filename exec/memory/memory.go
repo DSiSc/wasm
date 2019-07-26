@@ -5,7 +5,7 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/ontio/ontology/vm/wasmvm/util"
+	"github.com/DSiSc/wasm/util"
 )
 
 type PType int
