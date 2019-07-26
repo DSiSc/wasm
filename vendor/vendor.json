@@ -1,0 +1,31 @@
+{
+	"comment": "",
+	"ignore": "test",
+	"package": [
+		{
+			"checksumSHA1": "Vdaftt1J1nSEmhiLz4m90YY+S0A=",
+			"path": "github.com/edsrzf/mmap-go",
+			"revision": "904c4ced31cdffe19e971afa0b3d319ff06d9c72",
+			"revisionTime": "2018-12-22T14:20:22Z"
+		},
+		{
+			"checksumSHA1": "f1CLCuEiP9D+86T2Xw6ok+zOU1s=",
+			"path": "github.com/twitchyliquid64/golang-asm",
+			"revision": "365674df15fca926ba77bdc339f521aa4705929b",
+			"revisionTime": "2019-01-26T20:37:39Z"
+		},
+		{
+			"checksumSHA1": "2UWAdodtNkAN/bV5poG1/J/6HDY=",
+			"path": "github.com/twitchyliquid64/golang-asm/obj",
+			"revision": "365674df15fca926ba77bdc339f521aa4705929b",
+			"revisionTime": "2019-01-26T20:37:39Z"
+		},
+		{
+			"checksumSHA1": "+8+pv5TWxhKRNewCm92m15cGho8=",
+			"path": "github.com/twitchyliquid64/golang-asm/obj/x86",
+			"revision": "365674df15fca926ba77bdc339f521aa4705929b",
+			"revisionTime": "2019-01-26T20:37:39Z"
+		}
+	],
+	"rootPath": "github.com/DSiSc/wasm"
+}
