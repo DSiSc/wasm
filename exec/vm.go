@@ -22,6 +22,7 @@ import (
 	"github.com/DSiSc/wasm/exec/internal/compile"
 	"github.com/DSiSc/wasm/exec/memory"
 	"github.com/DSiSc/wasm/wasm"
+	"github.com/DSiSc/wasm/util"
 	ops "github.com/DSiSc/wasm/wasm/operators"
 	"math/big"
 )
@@ -96,6 +97,8 @@ func (self *VM) Create(caller types.Address, code []byte, gas uint64, value *big
 	//generate contract address
 	nonce := self.StateDB.GetNonce(caller)
 	contractAddr = crypto.CreateAddress(caller, nonce)
+	strAddr := util.AddressToHex(contractAddr)
+	log.Info("addr is : %s", strAddr)
 
 	//check balance
 	if !CanTransfer(self.StateDB, caller, value) {
