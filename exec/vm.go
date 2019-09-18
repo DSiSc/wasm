@@ -130,6 +130,9 @@ const entryPointMethod = "invoke"
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
 func (self *VM) Call(caller, addr types.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
+	self.ChainContext.Caller = caller
+	self.ChainContext.ContractAddr = addr
+
 	// Fail if we're trying to transfer more than the available balance
 	if !CanTransfer(self.StateDB, caller, value) {
 		return nil, gas, ErrInsufficientBalance
@@ -200,6 +203,7 @@ func extractParams(input []byte) ([]string, error) {
 type VMInterpreter struct {
 	ChainContext *WasmChainContext
 	StateDB      *repository.Repository
+	UsedGas      uint64
 
 	ctx context
 
