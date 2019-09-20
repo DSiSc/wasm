@@ -1,21 +1,21 @@
 (module
  (type $FUNCSIG$vii (func (param i32 i32)))
  (type $FUNCSIG$ii (func (param i32) (result i32)))
- (import "env" "get_state" (func $get_state (param i32) (result i32)))
- (import "env" "set_state" (func $set_state (param i32 i32)))
+ (import "env" "justitia_internal_storage_read" (func $justitia_internal_storage_read (param i32) (result i32)))
+ (import "env" "justitia_internal_storage_write" (func $justitia_internal_storage_write (param i32 i32)))
  (table 0 anyfunc)
  (memory $0 1)
  (export "memory" (memory $0))
  (export "set_global_state" (func $set_global_state))
  (export "get_global_state" (func $get_global_state))
  (func $set_global_state (; 2 ;) (param $0 i32) (param $1 i32)
-  (call $set_state
+  (call $justitia_internal_storage_write
    (get_local $0)
    (get_local $1)
   )
  )
  (func $get_global_state (; 3 ;) (param $0 i32) (result i32)
-  (call $get_state
+  (call $justitia_internal_storage_read
    (get_local $0)
   )
  )

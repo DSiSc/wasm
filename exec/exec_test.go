@@ -413,10 +413,6 @@ func TestNonSpec(t *testing.T) {
 	testModules(t, nonSpecTestsDir, false)
 }
 
-func TestSpec(t *testing.T) {
-	testModules(t, specTestsDir, false)
-}
-
 func TestVMRestart(t *testing.T) {
 	testModules(t, nonSpecTestsDir, true)
 }

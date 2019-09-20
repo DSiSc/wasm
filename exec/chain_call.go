@@ -2,11 +2,19 @@ package exec
 
 import (
 	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"github.com/DSiSc/craft/log"
 	"github.com/DSiSc/craft/types"
 	"github.com/DSiSc/wasm/util"
 	"math/big"
+	"strings"
 )
+
+//SetState updates a value in account storage
+func Debug(proc *Process, keyPtr, valPtr int32) {
+	//TODO
+}
 
 //SetState updates a value in account storage
 func SetState(proc *Process, keyPtr, valPtr int32) {
@@ -18,7 +26,9 @@ func SetState(proc *Process, keyPtr, valPtr int32) {
 	hash := hasher.Sum(nil)
 
 	valLen := vm.Mem.MemPoints[uint64(valPtr)].Length
-	vm.StateDB.SetState(*vm.ChainContext.Origin, util.BytesToHash(hash), vm.Mem.ByteMem[valPtr:valPtr+int32(valLen)])
+	valBytes := make([]byte, valLen)
+	copy(valBytes, vm.Mem.ByteMem[valPtr:valPtr+int32(valLen)])
+	vm.StateDB.SetState(vm.ChainContext.ContractAddr, util.BytesToHash(hash), valBytes)
 }
 
 //GetState get a value in account storage
@@ -29,7 +39,7 @@ func GetState(proc *Process, keyPtr int32) int32 {
 	hasher := sha256.New()
 	hasher.Write(vm.Mem.ByteMem[keyPtr : keyPtr+int32(keyLen)])
 	hash := hasher.Sum(nil)
-	val := vm.StateDB.GetState(*vm.ChainContext.Origin, util.BytesToHash(hash))
+	val := vm.StateDB.GetState(vm.ChainContext.ContractAddr, util.BytesToHash(hash))
 	pointer, err := vm.Mem.Malloc(len(val))
 	if err != nil {
 		log.Error("failed to malloc memory, as:%v", err)
@@ -52,6 +62,12 @@ func BlockTimeStamp(proc *Process) int64 {
 }
 
 //SelfAddress return contract address
+func CallerAddress(proc *Process) int32 {
+	vm := proc.GetVMInstance()
+	return writeContentToMemory(vm, vm.ChainContext.Caller[:])
+}
+
+//SelfAddress return contract address
 func SelfAddress(proc *Process) int32 {
 	vm := proc.GetVMInstance()
 	return writeContentToMemory(vm, vm.ChainContext.ContractAddr[:])
@@ -69,7 +85,8 @@ func Sha256(proc *Process, contentPtr int32) int32 {
 	}
 	hash := hasher.Sum(nil)
 
-	return writeContentToMemory(vm, hash)
+	hashStr := fmt.Sprintf("0x%x", hash)
+	return writeContentToMemory(vm, []byte(hashStr))
 }
 
 //Call call another contract
@@ -86,8 +103,8 @@ func StaticCall(proc *Process, contractAddrPtr int32, paramPtr int32, value int6
 
 func callWithCaller(vmInterpreter *VMInterpreter, caller types.Address, contractAddrPtr int32, paramPtr int32, value int64) int32 {
 	contractAddrByte := getContentFromMemory(vmInterpreter, contractAddrPtr)
-	contractAddr := util.BytesToAddress(contractAddrByte)
-	param := getContentFromMemory(vmInterpreter, paramPtr)
+	contractAddr := util.HexToAddress(strings.Trim(string(contractAddrByte), "\x00"))
+	params := extractPatams(vmInterpreter, paramPtr)
 
 	chainContex := &WasmChainContext{
 		Origin:       &caller,
@@ -100,12 +117,21 @@ func callWithCaller(vmInterpreter *VMInterpreter, caller types.Address, contract
 		ContractAddr: vmInterpreter.ChainContext.ContractAddr,
 	}
 	vm := NewVM(chainContex, vmInterpreter.StateDB)
-	ret, leftGas, err := vm.Call(caller, contractAddr, param, 0, big.NewInt(value))
+	ret, leftGas, err := vm.Call(caller, contractAddr, params, 0, big.NewInt(value))
 	vmInterpreter.UsedGas += chainContex.GasLimit - leftGas
 	if err != nil {
-		return -1
+		return 0
 	}
 	return writeContentToMemory(vmInterpreter, ret)
+}
+
+func extractPatams(vm *VMInterpreter, pointer int32) []byte {
+	param := getContentFromMemory(vm, pointer)
+	if len(param) <= 0 {
+		return make([]byte, 0)
+	}
+	params, _ := json.Marshal(strings.Split(string(param[:len(param)-1]), ","))
+	return params
 }
 
 func getContentFromMemory(vm *VMInterpreter, pointer int32) []byte {
@@ -115,6 +141,7 @@ func getContentFromMemory(vm *VMInterpreter, pointer int32) []byte {
 }
 
 func writeContentToMemory(vm *VMInterpreter, val []byte) int32 {
+	val = append(val, 0)
 	pointer, err := vm.Mem.Malloc(len(val))
 	if err != nil {
 		return -1

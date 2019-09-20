@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"testing"
 
+	"fmt"
 	"github.com/DSiSc/wasm/wasm"
 )
 
@@ -211,7 +212,7 @@ func TestGoFunctionCallChecksForFirstArgument(t *testing.T) {
 	}
 	_, err = vm.ExecCode(1)
 	if err != nil {
-		t.Fatalf("Error executing the default function: %v", err)
+		panic(fmt.Sprintf("%v", err))
 	}
 }
 

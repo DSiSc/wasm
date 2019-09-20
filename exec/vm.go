@@ -13,6 +13,7 @@ import (
 	"math"
 
 	"bytes"
+	"container/list"
 	"encoding/json"
 	"github.com/DSiSc/craft/log"
 	"github.com/DSiSc/craft/types"
@@ -186,7 +187,7 @@ func (self *VM) Call(caller, addr types.Address, input []byte, gas uint64, value
 	if err != nil {
 		return nil, gas, fmt.Errorf("failed to parse contract retrun value, as:%v.", err)
 	}
-	return ret, gas, err
+	return bytes.Trim(ret, "\x00"), gas, err
 }
 
 // extract call input params
@@ -199,11 +200,14 @@ func extractParams(input []byte) ([]string, error) {
 	return params, nil
 }
 
+const callDepthLimit = uint64(2048)
+
 // VMInterpreter is the execution context for executing WebAssembly bytecode.
 type VMInterpreter struct {
 	ChainContext *WasmChainContext
 	StateDB      *repository.Repository
 	UsedGas      uint64
+	CallDepth    uint64
 
 	ctx context
 
@@ -266,7 +270,6 @@ func NewInterpreter(module *wasm.Module, opts ...VMOption) (*VMInterpreter, erro
 	for _, opt := range opts {
 		opt(&options)
 	}
-
 	// init module memory
 	vmMem, err := initVMMemory(module)
 	if err != nil {
@@ -393,10 +396,20 @@ func initVMMemory(module *wasm.Module) (*memory.VMmemory, error) {
 		//
 		vmMem.AllocedMemIdex = tmpIdx
 		vmMem.PointedMemIndex = (len(vmMem.ByteMem) + tmpIdx) / 2
+		vmMem.AvailableMem = list.New()
+		vmMem.AvailableMem.PushFront(&memory.AvailableMemFragement{
+			Start: vmMem.AllocedMemIdex + 1,
+			Size:  vmMem.PointedMemIndex - vmMem.AllocedMemIdex,
+		})
 	} else {
 		//default pointed memory
 		vmMem.AllocedMemIdex = -1
 		vmMem.PointedMemIndex = len(vmMem.ByteMem) / 2 //the second half memory is reserved for the pointed objects,string,array,structs
+		vmMem.AvailableMem = list.New()
+		vmMem.AvailableMem.PushFront(&memory.AvailableMemFragement{
+			Start: 1,
+			Size:  vmMem.PointedMemIndex - 1,
+		})
 	}
 	return vmMem, nil
 }
@@ -534,18 +547,16 @@ func (vm *VMInterpreter) pushFloat32(f float32) {
 func (vm *VMInterpreter) ExecCode(fnIndex int64, args ...uint64) (rtrn interface{}, err error) {
 	// If used as a library, client code should set vm.RecoverPanic to true
 	// in order to have an error returned.
-	if vm.RecoverPanic {
-		defer func() {
-			if r := recover(); r != nil {
-				switch e := r.(type) {
-				case error:
-					err = e
-				default:
-					err = fmt.Errorf("exec: %v", e)
-				}
+	defer func() {
+		if r := recover(); r != nil {
+			switch e := r.(type) {
+			case error:
+				err = e
+			default:
+				err = fmt.Errorf("%v", e)
 			}
-		}()
-	}
+		}
+	}()
 	if int(fnIndex) > len(vm.funcs) {
 		return nil, InvalidFunctionIndexError(fnIndex)
 	}

@@ -27,11 +27,18 @@ func initEnvModule() *wasm.Module {
 	}
 	envModule.FunctionIndexSpace = []wasm.Function{}
 	envModule.Export = &wasm.SectionExports{Entries: make(map[string]wasm.ExportEntry)}
-
 	appendFunc(envModule, "malloc", Malloc)
-	appendFunc(envModule, "memcpy", Memcpy)
-	appendFunc(envModule, "get_state", GetState)
-	appendFunc(envModule, "set_state", SetState)
+	appendFunc(envModule, "free", Free)
+	appendFunc(envModule, "debug", SetState)
+	appendFunc(envModule, "justitia_internal_storage_read", GetState)
+	appendFunc(envModule, "justitia_internal_storage_write", SetState)
+	appendFunc(envModule, "justitia_internal_sha256", Sha256)
+	appendFunc(envModule, "justitia_block_height", BlockHeight)
+	appendFunc(envModule, "justitia_timestamp", BlockTimeStamp)
+	appendFunc(envModule, "justitia_caller_address", CallerAddress)
+	appendFunc(envModule, "justitia_self_address", SelfAddress)
+	appendFunc(envModule, "justitia_internal_call_contract", Call)
+	appendFunc(envModule, "justitia_internal_static_call_contract", StaticCall)
 	return envModule
 }
 
