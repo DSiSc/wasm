@@ -15,6 +15,12 @@ func Malloc(proc *Process, size int32) int32 {
 	}
 }
 
+//Free free memory
+func Free(proc *Process, ptr int32) {
+	vm := proc.GetVMInstance()
+	vm.GetMemory().Free(int(ptr))
+}
+
 // Copy data int memory, return
 func Memcpy(proc *Process, dest, src, size int32) int32 {
 	vm := proc.GetVMInstance()

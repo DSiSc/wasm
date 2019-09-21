@@ -92,6 +92,11 @@ func (fn goFunction) call(vm *VMInterpreter, index int64) {
 func (compiled compiledFunction) call(vm *VMInterpreter, index int64) {
 	// Make space on the stack for all intermediate values and
 	// a possible return value.
+	vm.CallDepth++
+	if vm.CallDepth > callDepthLimit {
+		panic("reached call depth limit")
+	}
+
 	newStack := make([]uint64, 0, compiled.maxDepth+1)
 	locals := make([]uint64, compiled.totalLocalVars)
 
@@ -119,4 +124,5 @@ func (compiled compiledFunction) call(vm *VMInterpreter, index int64) {
 	if compiled.returns {
 		vm.pushUint64(rtrn)
 	}
+	vm.CallDepth--
 }

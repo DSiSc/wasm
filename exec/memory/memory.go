@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 
+	"container/list"
 	"github.com/DSiSc/wasm/util"
 )
 
@@ -32,8 +33,14 @@ type TypeLength struct {
 	Length int
 }
 
+type AvailableMemFragement struct {
+	Start int
+	Size  int
+}
+
 type VMmemory struct {
 	ByteMem         []byte
+	AvailableMem    *list.List
 	AllocedMemIdex  int
 	PointedMemIndex int
 	ParamIndex      int //args analyze pointer
@@ -45,19 +52,89 @@ func (vm *VMmemory) Malloc(size int) (int, error) {
 	if vm.ByteMem == nil || len(vm.ByteMem) == 0 {
 		return 0, errors.New("memory is not initialized")
 	}
-	if vm.AllocedMemIdex+size+1 > len(vm.ByteMem) {
+
+	// find best match fragment
+	var bestMatchElemnt *list.Element
+	bestMatchSize := vm.PointedMemIndex + 1
+	for font := vm.AvailableMem.Front(); font != nil; font = font.Next() {
+		fragment := font.Value.(*AvailableMemFragement)
+		if fragment.Size >= size && fragment.Size < bestMatchSize {
+			bestMatchElemnt = font
+		}
+	}
+
+	if bestMatchElemnt == nil {
 		return 0, errors.New("memory out of bound")
 	}
 
-	if vm.AllocedMemIdex+size+1 > vm.PointedMemIndex {
-		return 0, errors.New("memory out of bound")
+	// malloc fragment
+	bestMatchFragment := bestMatchElemnt.Value.(*AvailableMemFragement)
+	vm.AvailableMem.Remove(bestMatchElemnt)
+	if size < bestMatchFragment.Size {
+		vm.AvailableMem.PushBack(&AvailableMemFragement{
+			Start: bestMatchFragment.Start + size,
+			Size:  bestMatchFragment.Size - size,
+		})
 	}
 
-	offset := vm.AllocedMemIdex + 1
-	vm.AllocedMemIdex += size
+	vm.MemPoints[uint64(bestMatchFragment.Start)] = &TypeLength{Ptype: PInt8, Length: size}
+	return bestMatchFragment.Start, nil
+}
 
-	vm.MemPoints[uint64(offset)] = &TypeLength{Ptype: PInt8, Length: size}
-	return offset, nil
+//Free memory
+func (vm *VMmemory) Free(ptr int) {
+	memLen := vm.MemPoints[uint64(ptr)]
+	if memLen == nil {
+		return
+	}
+	delete(vm.MemPoints, uint64(ptr))
+
+	start := ptr
+	end := ptr + memLen.Length
+	// find pre and after fragment
+	var pre, after *list.Element
+	for font := vm.AvailableMem.Front(); font != nil; font = font.Next() {
+		fragment := font.Value.(*AvailableMemFragement)
+		if fragment.Start == end {
+			after = font
+		}
+		if fragment.Start+fragment.Size == start {
+			pre = font
+		}
+	}
+
+	if pre != nil && after != nil {
+		vm.AvailableMem.PushBack(&AvailableMemFragement{
+			Start: pre.Value.(*AvailableMemFragement).Start,
+			Size:  pre.Value.(*AvailableMemFragement).Size + memLen.Length + after.Value.(*AvailableMemFragement).Size,
+		})
+		vm.AvailableMem.Remove(pre)
+		vm.AvailableMem.Remove(after)
+		return
+	}
+
+	if pre != nil {
+		vm.AvailableMem.PushBack(&AvailableMemFragement{
+			Start: pre.Value.(*AvailableMemFragement).Start,
+			Size:  pre.Value.(*AvailableMemFragement).Size + memLen.Length,
+		})
+		vm.AvailableMem.Remove(pre)
+		return
+	}
+
+	if after != nil {
+		vm.AvailableMem.PushBack(&AvailableMemFragement{
+			Start: ptr,
+			Size:  memLen.Length + after.Value.(*AvailableMemFragement).Size,
+		})
+		vm.AvailableMem.Remove(after)
+		return
+	}
+
+	vm.AvailableMem.PushBack(&AvailableMemFragement{
+		Start: ptr,
+		Size:  memLen.Length,
+	})
 }
 
 //Alloc memory for pointer types, return the address in memory
@@ -122,6 +199,7 @@ func (vm *VMmemory) SetPointerMemory(val interface{}) (int, error) {
 	switch reflect.TypeOf(val).Kind() {
 	case reflect.String:
 		b := []byte(val.(string))
+		b = append(b, 0)
 		return vm.copyMemAndGetIdx(b, PString)
 	case reflect.Array, reflect.Struct, reflect.Ptr:
 		//todo  implement

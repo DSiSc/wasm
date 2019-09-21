@@ -189,13 +189,13 @@ func TestVM_UpdateState(t *testing.T) {
 	copy(vm.Mem.ByteMem[valPtr:valPtr+len(val)], val)
 
 	fmt.Println(string(vm.Mem.ByteMem[:10]))
-	_, err = vm.ExecCode(fct1, uint64(keyPtr), uint64(len(key)), uint64(valPtr), uint64(len(val)))
+	_, err = vm.ExecCode(fct1, uint64(keyPtr), uint64(valPtr))
 	fmt.Println(string(vm.Mem.ByteMem[:10]))
 	assert.Nil(t, err)
 	assert.Equal(t, val, db[string(util.Hex2Bytes("185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969"))])
 
 	const fct2 = 3 // index of function fct2
-	out, err := vm.ExecCode(fct2, uint64(keyPtr), uint64(len(key)))
+	out, err := vm.ExecCode(fct2, uint64(keyPtr))
 	assert.Nil(t, err)
 	assert.Equal(t, val, vm.Mem.ByteMem[int(out.(uint32)):int(out.(uint32)+uint32(len(val)))])
 }

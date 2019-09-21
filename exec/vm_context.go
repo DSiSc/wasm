@@ -11,12 +11,14 @@ import (
 //WasmChainContext chain context for wasm to execute
 type WasmChainContext struct {
 	// Message information
-	Origin      *types.Address // Provides information for ORIGIN
-	GasPrice    *big.Int       // Provides information for GASPRICE
-	Coinbase    types.Address  // Provides information for COINBASE
-	GasLimit    uint64         // Provides information for GASLIMIT
-	BlockNumber *big.Int       // Provides information for NUMBER
-	Time        *big.Int       // Provides information for TIME
+	Origin       *types.Address // Provides information for ORIGIN
+	GasPrice     *big.Int       // Provides information for GASPRICE
+	Coinbase     types.Address  // Provides information for COINBASE
+	GasLimit     uint64         // Provides information for GASLIMIT
+	BlockNumber  *big.Int       // Provides information for NUMBER
+	Time         *big.Int       // Provides information for TIME
+	Caller       types.Address
+	ContractAddr types.Address
 }
 
 // NewEVMContext creates a new chain context for use in the WASM.
