@@ -168,7 +168,8 @@ func TestVM_UpdateState(t *testing.T) {
 		log.Fatalf("could not create wagon vm: %v", err)
 	}
 	vm.ChainContext = &exec.WasmChainContext{
-		Origin: &types.Address{},
+		Origin:   &types.Address{},
+		GasLimit: uint64(1<<30 - 1),
 	}
 	vm.StateDB = &repository.Repository{}
 

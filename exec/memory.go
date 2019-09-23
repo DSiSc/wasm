@@ -209,6 +209,7 @@ func (vm *VMInterpreter) growMemory() {
 	_ = vm.fetchInt8() // reserved (https://github.com/WebAssembly/design/blob/27ac254c854994103c24834a994be16f74f54186/BinaryEncoding.md#memory-related-operators-described-here)
 	curLen := len(vm.Mem.ByteMem) / wasmPageSize
 	n := vm.popInt32()
+	vm.UsedGas += uint64(n * wasmPageSize)
 	vm.Mem.ByteMem = append(vm.Mem.ByteMem, make([]byte, n*wasmPageSize)...)
 	vm.pushInt32(int32(curLen))
 }

@@ -29,6 +29,8 @@ func SetState(proc *Process, keyPtr, valPtr int32) {
 	valBytes := make([]byte, valLen)
 	copy(valBytes, vm.Mem.ByteMem[valPtr:valPtr+int32(valLen)])
 	vm.StateDB.SetState(vm.ChainContext.ContractAddr, util.BytesToHash(hash), valBytes)
+
+	vm.UsedGas += uint64(keyLen + valLen)
 }
 
 //GetState get a value in account storage
@@ -117,8 +119,8 @@ func callWithCaller(vmInterpreter *VMInterpreter, caller types.Address, contract
 		ContractAddr: vmInterpreter.ChainContext.ContractAddr,
 	}
 	vm := NewVM(chainContex, vmInterpreter.StateDB)
-	ret, leftGas, err := vm.Call(caller, contractAddr, params, 0, big.NewInt(value))
-	vmInterpreter.UsedGas += chainContex.GasLimit - leftGas
+	ret, leftGas, err := vm.Call(caller, contractAddr, params, vmInterpreter.ChainContext.GasLimit-vmInterpreter.UsedGas, big.NewInt(value))
+	vmInterpreter.UsedGas += vm.ChainContext.GasLimit - leftGas
 	if err != nil {
 		return 0
 	}
