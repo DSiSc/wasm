@@ -4,7 +4,6 @@ import (
 	"github.com/DSiSc/craft/types"
 	"github.com/DSiSc/repository"
 	"github.com/DSiSc/wasm/util"
-	"math"
 	"math/big"
 )
 
@@ -32,7 +31,7 @@ func NewWasmChainContext(tx *types.Transaction, header *types.Header, chain *rep
 		GasPrice: new(big.Int).Set(tx.Data.Price),
 		Coinbase: beneficiary,
 		// TODO: Initially we will not specify a precise gas limit
-		GasLimit:    uint64(math.MaxInt64),
+		GasLimit:    uint64(1<<30 - 1),
 		BlockNumber: new(big.Int).SetUint64(header.Height),
 		Time:        new(big.Int).SetUint64(header.Timestamp),
 	}

@@ -168,7 +168,9 @@ func TestVM_Create(t *testing.T) {
 }
 
 func TestVM_Call(t *testing.T) {
-	context := &WasmChainContext{}
+	context := &WasmChainContext{
+		GasLimit: uint64(1<<30 - 1),
+	}
 	state := &repository.Repository{}
 	vm := NewVM(context, state)
 	assert.NotNil(t, vm)

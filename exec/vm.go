@@ -177,7 +177,6 @@ func (self *VM) Call(caller, addr types.Address, input []byte, gas uint64, value
 	if err != nil {
 		return nil, gas, fmt.Errorf("failed to pass input params to contract, as:%v.", err)
 	}
-
 	retP, err := interpreter.ExecCode(fnIndex, uint64(len(args)), uint64(argPPs))
 	if err != nil {
 		return nil, gas, fmt.Errorf("failed to execute contract, as:%v.", err)
@@ -185,9 +184,9 @@ func (self *VM) Call(caller, addr types.Address, input []byte, gas uint64, value
 
 	ret, err = interpreter.GetMemory().GetMemory(uint64(retP.(uint32)))
 	if err != nil {
-		return nil, gas, fmt.Errorf("failed to parse contract retrun value, as:%v.", err)
+		return nil, gas - interpreter.UsedGas, fmt.Errorf("failed to parse contract retrun value, as:%v.", err)
 	}
-	return bytes.Trim(ret, "\x00"), gas, err
+	return bytes.Trim(ret, "\x00"), gas - interpreter.UsedGas, err
 }
 
 // extract call input params
@@ -266,6 +265,9 @@ func NewVMIntepreter(vm *VM, module *wasm.Module, opts ...VMOption) (*VMInterpre
 // a start function, it will be executed.
 func NewInterpreter(module *wasm.Module, opts ...VMOption) (*VMInterpreter, error) {
 	var vm VMInterpreter
+	vm.ChainContext = &WasmChainContext{
+		GasLimit: uint64(1<<30 - 1),
+	}
 	var options config
 	for _, opt := range opts {
 		opt(&options)
@@ -606,8 +608,19 @@ func (vm *VMInterpreter) ExecCode(fnIndex int64, args ...uint64) (rtrn interface
 }
 
 func (vm *VMInterpreter) execCode(compiled compiledFunction) uint64 {
+	if vm.ChainContext == nil {
+		vm.ChainContext = &WasmChainContext{
+			GasLimit: uint64(1<<30 - 1),
+		}
+	}
 outer:
 	for int(vm.ctx.pc) < len(vm.ctx.code) && !vm.abort {
+		//cost gas
+		vm.UsedGas++
+		if vm.UsedGas >= vm.ChainContext.GasLimit {
+			panic("out of gas")
+		}
+
 		op := vm.ctx.code[vm.ctx.pc]
 		vm.ctx.pc++
 		switch op {
